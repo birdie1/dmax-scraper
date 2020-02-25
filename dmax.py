@@ -10,7 +10,7 @@ from requests import get
 import formats
 
 logging.getLogger('requests.packages.urllib3.connectionpool').setLevel('WARNING')
-logging.basicConfig(level=logging.DEBUG,
+logging.basicConfig(level=logging.INFO,
                     format='[%(levelname)-7s] (%(asctime)s) %(filename)s::%(lineno)d %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
                     filename='main.log')
