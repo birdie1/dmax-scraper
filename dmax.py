@@ -5,6 +5,7 @@ import os
 import sys
 import youtube_dl
 import xlsxwriter
+import shutil
 from requests import get
 
 import formats
@@ -326,11 +327,17 @@ if __name__ == "__main__":
                     logger.info("Max download count reached. Stopping")
                     sys.exit(0)
 
+                rename = False
                 if not already_downloaded(j.get("filename")):
                     logger.info("Downloading file: {}".format(j.get("filename")))
-                    ydl_opts = {'quiet': True, 'outtmpl': "downloads/{}/{}".format(j.get("dir"), j.get("filename"))}
+                    ydl_opts = {'quiet': True, 'outtmpl': "downloads/{}/{}".format(j.get("dir"), j.get("filename").replace("%", "PERCENT"))}
+                    rename = True
                     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([j.get("video_link")])
+
+                    if rename:
+                        shutil.move("downloads/{}/{}.mp4".format(j.get("dir"), j.get("filename").replace("%", "PERCENT")),
+                                    "downloads/{}/{}.mp4".format(j.get("dir"), j.get("filename")))
 
                     if os.path.isfile("downloads/{}/{}.mp4".format(j.get("dir"), j.get("filename"))):
                         logger.info("Downloading file finished: {}".format(j.get("filename")))
