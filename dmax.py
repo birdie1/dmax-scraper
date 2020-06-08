@@ -92,15 +92,20 @@ def get_videos_api_request(showid, token, page):
     return data
 
 
-def get_episodes(showid, token, chosen_season=0, chosen_episode=0, includespecials=True):
+def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
     episodes = []
     data = get_videos_api_request(showid, token, 1)
+    if not data:
+        logger.error("Can't fetch data on page 1 on show {}".format(showid))
 
     if data["meta"]["totalPages"] > 1:
         logger.info("More than 100 videos, need to get more pages")
         for i in range(1, data["meta"]["totalPages"]):
             more_data = get_videos_api_request(showid, token, i+1)
-            data["data"].extend(more_data["data"])
+            if not more_data:
+                logger.error("Can't fetch data on page {} on show {}".format(i+1, showid))
+            else:
+                data["data"].extend(more_data["data"])
 
     if len(data["data"]) == 0:
         logger.warning("No episodes found in {}".format(showid))
@@ -264,13 +269,6 @@ if __name__ == "__main__":
         help="Episode of season to get (default: 0 = all) - season MUST be set!"
     )
     parser.add_argument(
-        '--specials',
-        action='store_true',
-        default=False,
-        dest='includespecials',
-        help='Download specials'
-    )
-    parser.add_argument(
         '--xls',
         action='store_true',
         default=False,
@@ -299,7 +297,6 @@ if __name__ == "__main__":
     chosen_season = chosen_season[0]
     chosen_episode = arguments.episode,
     chosen_episode = chosen_episode[0]
-    includespecials = arguments.includespecials
     xlsx = arguments.xls
     out_links = arguments.links
     out_commands = arguments.commands
@@ -323,7 +320,7 @@ if __name__ == "__main__":
 
     for show in alternate_id_list:
         logger.info("Processing Show: {}".format(show))
-        episodes = get_episodes(show, token, chosen_season=chosen_season, chosen_episode=chosen_episode, includespecials=includespecials)
+        episodes = get_episodes(show, token, chosen_season=chosen_season, chosen_episode=chosen_episode)
 
         if episodes is None:
             logger.warning("No Episodes in {}".format(show))
