@@ -6,6 +6,7 @@ import sys
 import youtube_dl
 import xlsxwriter
 import shutil
+import re
 from requests import get
 
 import formats
@@ -23,12 +24,13 @@ formatter = logging.Formatter('[%(levelname)-7s] (%(asctime)s) %(filename)s::%(l
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-
-BASE_URL = "https://www.dmax.de/"
-API_URL = BASE_URL + "api/show-detail/{0}"
-API_URL_ALL_SHOWS = BASE_URL + "api/shows-az/"
+API_BASE = "https://eu1-prod.disco-api.com"
+SHOW_INFO_URL = API_BASE + "/content/videos//?include=primaryChannel,primaryChannel.images,show,show.images," \
+                           "genres,tags,images,contentPackages&sort=-seasonNumber,-episodeNumber" \
+                           "&filter[show.alternateId]={0}&filter[videoType]=EPISODE&page[number]={1}&page[size]=100"
+API_URL_ALL_SHOWS = API_BASE + "/content/shows?page[number]={0}&page[size]=100"
 PLAYER_URL = "https://sonic-eu1-prod.disco-api.com/playback/videoPlaybackInfo/"
-USER_AGENT = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:68.0) Gecko/20100101 Firefox/68.0"
 MAX_DOWNLOAD = 500
 ALREADY_DOWNLOADED_FILE = "downloaded.txt"
 
@@ -70,52 +72,51 @@ class WorkbookWriter:
     def __del__(self):
         self.workbook.close()
 
-def get_episodes(showid, chosen_season=0, chosen_episode=0, includespecials=True):
+
+def get_videos_api_request(showid, token, page):
     try:
-        req = get(API_URL.format(showid))
+        req = get(SHOW_INFO_URL.format(showid, page), headers={"Authorization": "Bearer " + token})
     except Exception as e:
         logger.critical("Connection error: {0}".format(str(e)))
-        return
+        return False
 
     if req.status_code != 200:
         logger.error("This show does not exist.")
-        return
+        return False
 
     data = req.json()
     if "errors" in data:
         logger.error("This show does not exist.")
-        return
+        return False
 
-    cookies = req.cookies.get_dict()
-    if "sonicToken" not in cookies:
-        logger.error("No sonicToken found, can not proceed")
-        return
-    token = cookies["sonicToken"]
+    return data
+
+
+def get_episodes(showid, token, chosen_season=0, chosen_episode=0, includespecials=True):
+    data = get_videos_api_request(showid, token, 1)
+
+    if data["meta"]["totalPages"] > 1:
+        logger.info("More than 100 videos, need to get more pages")
+        for i in range(1, data["meta"]["totalPages"]):
+            more_data = get_videos_api_request(showid, token, i+1)
+            data["data"].extend(more_data["data"])
+
     show = formats.DMAX(data)
 
     episodes = []
-    if includespecials:
-        for special in show.specials:
-            episodes.append(special)
-
     if chosen_season == 0 and chosen_episode == 0:  # Get EVERYTHING
-        for season in show.seasons:
-            for episode in season.episodes:
-                episodes.append(episode)
+        episodes = show.episodes
     elif chosen_season > 0 and chosen_episode == 0:  # Get whole season
-        for season in show.seasons:
-            if season.number == chosen_season:
-                for episode in season.episodes:
-                    episodes.append(episode)
+        for episode in show.episodes:
+            if episode.seasonNumber == chosen_season:
+                episodes.append(episode)
         if not episodes:
             logger.error("This season does not exist.")
             return
     else:  # Get single episode
-        for season in show.seasons:
-            if season.number == chosen_season:
-                for episode in season.episodes:
-                    if episode.episodeNumber == chosen_episode:
-                        episodes.append(episode)
+        for episode in show.episodes:
+            if episode.seasonNumber == chosen_season and episode.episodeNumber == chosen_episode:
+                episodes.append(episode)
         if not episodes:
             logger.error("Episode not found.")
             return
@@ -125,7 +126,7 @@ def get_episodes(showid, chosen_season=0, chosen_episode=0, includespecials=True
         return
 
     return_dict = []
-    logger.info("Get {} links".format(len(episodes)))
+    logger.info("Found {} episodes, getting video links...".format(len(episodes)))
 
     for num, episode in enumerate(episodes):
         if episode.season == "" and episode.episode == "":
@@ -169,17 +170,30 @@ def get_episodes(showid, chosen_season=0, chosen_episode=0, includespecials=True
     return return_dict
 
 
-def request_dmax_api_all_shows():
-    response = get(API_URL_ALL_SHOWS)
-    return response.json()
+def get_token():
+    logger.info("Getting Authorization token...")
+    try:
+        token = get(API_BASE + "/token?realm=dmaxde").json()["data"]["attributes"]["token"]
+    except Exception as e:
+        logger.critical("Connection error: {0}".format(str(e)))
+        return False
+    return token
 
 
-def extract_alternate_id(data):
+def request_dmax_api_all_shows(token):
+    count = 0
     return_list = []
-    for i in data["items"]:
-        ##this is sort by A, B, C...
-        for j in i["items"]:
-            return_list.append(j["url"][11:])
+
+    while True:
+        count += 1
+        response = get(API_URL_ALL_SHOWS.format(count), headers={"Authorization": "Bearer " + token})
+        data = response.json()
+        if len(data["data"]) == 0:
+            break
+        for i in data["data"]:
+            return_list.append(i["attributes"]["alternateId"])
+
+    logger.info("Found {} shows on {} pages with 100 entries".format(len(return_list), count-1))
     return return_list
 
 
@@ -288,10 +302,13 @@ if __name__ == "__main__":
     out_commands = arguments.commands
     downloaded_count = 0
 
+    token = get_token()
+    if not token:
+        sys.exit(1)
+
     if showid is None:
-        json_data = request_dmax_api_all_shows()
-        alternate_id_list = extract_alternate_id(json_data)
-        logger.info("Found following shows: {}".format(alternate_id_list))
+        alternate_id_list = request_dmax_api_all_shows(token)
+        logger.info("Found following shows (Count: {}): {}".format(len(alternate_id_list), alternate_id_list))
     else:
         if chosen_episode < 0 or chosen_season < 0:
             print("ERROR: Episode/Season must be > 0.")
@@ -301,10 +318,9 @@ if __name__ == "__main__":
 
         alternate_id_list = [showid]
 
-
     for show in alternate_id_list:
         logger.info("Processing Show: {}".format(show))
-        episodes = get_episodes(show, chosen_season=chosen_season, chosen_episode=chosen_episode, includespecials=includespecials)
+        episodes = get_episodes(show, token, chosen_season=chosen_season, chosen_episode=chosen_episode, includespecials=includespecials)
 
         if episodes is None:
             logger.warning("No Episodes in {}".format(show))
