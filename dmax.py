@@ -167,7 +167,7 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
             continue
 
         if req.status_code != 200:
-            logger.error("HTTP error code {0} for video id {1]".format(req.status_code, episode.id))
+            logger.error("HTTP error code {0} for video id {1}".format(req.status_code, episode.id))
             continue
 
         data = req.json()
