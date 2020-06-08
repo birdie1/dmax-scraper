@@ -137,15 +137,15 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0, includespecia
         elif episode.season == "" and episode.episode != "":
             filename = "{show_name} - S{season}E{episode} - {episode_name}".format(
                 show_name=show.show.name,
-                season=episode.season,
-                episode=episode.episode,
+                season="{:02d}".format(episode.season),
+                episode="{:02d}".format(episode.episode),
                 episode_name=episode.name
             )
         else:
             filename = "{show_name} - S{season}E{episode} - {episode_name}".format(
                 show_name=show.show.name,
-                season=episode.season,
-                episode=episode.episode,
+                season="{:02d}".format(episode.season),
+                episode="{:02d}".format(episode.episode),
                 episode_name=episode.name
             )
 
@@ -166,7 +166,7 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0, includespecia
         video_link = data["data"]["attributes"]["streaming"]["hls"]["url"]
         filename = filename.replace("/", "-")
 
-        return_dict.append({'name': episode.name, 'description': episode.description, 'filename': filename, 'video_link': video_link, 'dir': "{}/{} Staffel {}".format(show.show.name.replace("/", "-"), show.show.name.replace("/", "-"), episode.season)})
+        return_dict.append({'name': episode.name, 'description': episode.description, 'filename': filename, 'video_link': video_link, 'dir': "{}/{} Staffel {}".format(show.show.name.replace("/", "-"), show.show.name.replace("/", "-"), "{:02d}".format(episode.season))})
     return return_dict
 
 
