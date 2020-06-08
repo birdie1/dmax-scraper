@@ -93,6 +93,7 @@ def get_videos_api_request(showid, token, page):
 
 
 def get_episodes(showid, token, chosen_season=0, chosen_episode=0, includespecials=True):
+    episodes = []
     data = get_videos_api_request(showid, token, 1)
 
     if data["meta"]["totalPages"] > 1:
@@ -101,9 +102,11 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0, includespecia
             more_data = get_videos_api_request(showid, token, i+1)
             data["data"].extend(more_data["data"])
 
+    if len(data["data"]) == 0:
+        logger.warning("No episodes found in {}".format(showid))
+        return episodes
     show = formats.DMAX(data)
 
-    episodes = []
     if chosen_season == 0 and chosen_episode == 0:  # Get EVERYTHING
         episodes = show.episodes
     elif chosen_season > 0 and chosen_episode == 0:  # Get whole season
@@ -132,21 +135,21 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0, includespecia
         if episode.season == "" and episode.episode == "":
             filename = "{show_name} - {episode_name}".format(
                 show_name=show.show.name,
-                episode_name=episode.name
+                episode_name=episode.name.strip()
             )
         elif episode.season == "" and episode.episode != "":
             filename = "{show_name} - S{season}E{episode} - {episode_name}".format(
                 show_name=show.show.name,
                 season="{:02d}".format(episode.season),
                 episode="{:02d}".format(episode.episode),
-                episode_name=episode.name
+                episode_name=episode.name.strip()
             )
         else:
             filename = "{show_name} - S{season}E{episode} - {episode_name}".format(
                 show_name=show.show.name,
                 season="{:02d}".format(episode.season),
                 episode="{:02d}".format(episode.episode),
-                episode_name=episode.name
+                episode_name=episode.name.strip()
             )
 
         try:
