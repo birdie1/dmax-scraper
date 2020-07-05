@@ -168,23 +168,23 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
     return return_dict
 
 
-def get_episode_video_link(episode_id):
+def get_episode_video_link(episode_id, filename):
     try:
         req = get(PLAYER_URL + episode_id, headers={
             "Authorization": "Bearer " + token,
             "User-Agent": USER_AGENT
         })
     except Exception as exception:
-        logger.error("Connection for video id {0} failed: {1}".format(episode_id, str(exception)))
+        logger.error("Connection for video id {0} ({1}) failed: {2}".format(episode_id, filename, str(exception)))
         return False
 
     if req.status_code == 429:
-        logger.error("HTTP error code {0} for video id {1}: This means RATE LIMITER, you are getting to many Items per second.".format(req.status_code, episode_id))
+        logger.error("HTTP error code {0} for video id {1} ({2}): This means RATE LIMITER, you are getting to many Items per second.".format(req.status_code, episode_id, filename))
         logger.error("Exiting")
         #time.sleep(60)
         sys.exit(1)
     elif req.status_code != 200:
-        logger.error("HTTP error code {0} for video id {1}".format(req.status_code, episode_id))
+        logger.error("HTTP error code {0} for video id {1} ({2})".format(req.status_code, episode_id, filename))
         return False
 
     data = req.json()
@@ -345,14 +345,14 @@ if __name__ == "__main__":
             logger.warning(
                 "Due to rate limiting request from dmax, I will wait 5 seconds between each request, this can take some time!")
             for episode in episodes:
-                print(get_episode_video_link(episode['id']))
+                print(get_episode_video_link(episode['id'], episode.get("filename")))
                 # Sleep to prevent dmax api rate limiter
                 time.sleep(5)
         elif out_commands:
             logger.warning(
                 "Due to rate limiting request from dmax, I will wait 5 seconds between each request, this can take some time!")
             for episode in episodes:
-                print(f"youtube-dl \"{get_episode_video_link(episode['id'])}\" -o \"{episode['filename']}.mp4\"")
+                print(f"youtube-dl \"{get_episode_video_link(episode['id'], episode.get('filename'))}\" -o \"{episode['filename']}.mp4\"")
                 # Sleep to prevent dmax api rate limiter
                 time.sleep(5)
         else:
@@ -366,11 +366,14 @@ if __name__ == "__main__":
 
                 rename = False
                 if not already_downloaded(j.get("filename")):
-                    logger.info("Downloading file: {}".format(j.get("filename")))
                     ydl_opts = {'quiet': True, 'outtmpl': "downloads/{}/{}".format(j.get("dir"), j.get("filename").replace("%", "PERCENT"))}
                     rename = True
+                    link = get_episode_video_link(j['id'], j.get("filename"))
+                    if not link:
+                        continue
+                    logger.info("Downloading file: {}".format(j.get("filename")))
                     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([get_episode_video_link(j['id'])])
+                        ydl.download([])
 
                     if rename:
                         shutil.move("downloads/{}/{}.mp4".format(j.get("dir"), j.get("filename").replace("%", "PERCENT")),
