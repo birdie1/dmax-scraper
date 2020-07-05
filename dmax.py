@@ -32,7 +32,7 @@ SHOW_INFO_URL = API_BASE + "/content/videos//?include=primaryChannel,primaryChan
 API_URL_ALL_SHOWS = API_BASE + "/content/shows?page[number]={0}&page[size]=100"
 PLAYER_URL = "https://sonic-eu1-prod.disco-api.com/playback/videoPlaybackInfo/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:68.0) Gecko/20100101 Firefox/68.0"
-MAX_DOWNLOAD = 500
+MAX_DOWNLOAD = 50000
 ALREADY_DOWNLOADED_FILE = "downloaded.txt"
 
 
@@ -367,13 +367,14 @@ if __name__ == "__main__":
                 rename = False
                 if not already_downloaded(j.get("filename")):
                     ydl_opts = {'quiet': True, 'outtmpl': "downloads/{}/{}".format(j.get("dir"), j.get("filename").replace("%", "PERCENT"))}
-                    rename = True
+                    if j.get("filename").find("%") != -1:
+                        rename = True
                     link = get_episode_video_link(j['id'], j.get("filename"))
                     if not link:
                         continue
                     logger.info("Downloading file: {}".format(j.get("filename")))
                     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([])
+                        ydl.download([link])
 
                     if rename:
                         shutil.move("downloads/{}/{}.mp4".format(j.get("dir"), j.get("filename").replace("%", "PERCENT")),
