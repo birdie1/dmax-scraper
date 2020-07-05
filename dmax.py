@@ -176,7 +176,7 @@ def get_episode_video_link(episode_id):
         })
     except Exception as exception:
         logger.error("Connection for video id {0} failed: {1}".format(episode_id, str(exception)))
-        False
+        return False
 
     if req.status_code == 429:
         logger.error("HTTP error code {0} for video id {1}: This means RATE LIMITER, you are getting to many Items per second.".format(req.status_code, episode_id))
@@ -185,7 +185,7 @@ def get_episode_video_link(episode_id):
         sys.exit(1)
     elif req.status_code != 200:
         logger.error("HTTP error code {0} for video id {1}".format(req.status_code, episode_id))
-        False
+        return False
 
     data = req.json()
     return data["data"]["attributes"]["streaming"]["hls"]["url"]
