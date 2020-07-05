@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 import youtube_dl
 import xlsxwriter
 import shutil
@@ -157,25 +158,37 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
                 episode_name=episode.name.strip()
             )
 
-        try:
-            req = get(PLAYER_URL + episode.id, headers={
-                "Authorization": "Bearer " + token,
-                "User-Agent": USER_AGENT
-            })
-        except Exception as exception:
-            logger.error("Connection for video id {0} failed: {1}".format(episode.id, str(exception)))
-            continue
-
-        if req.status_code != 200:
-            logger.error("HTTP error code {0} for video id {1}".format(req.status_code, episode.id))
-            continue
-
-        data = req.json()
-        video_link = data["data"]["attributes"]["streaming"]["hls"]["url"]
         filename = filename.replace("/", "-")
 
-        return_dict.append({'name': episode.name, 'description': episode.description, 'filename': filename, 'video_link': video_link, 'dir': "{}/{} Staffel {}".format(show.show.name.replace("/", "-"), show.show.name.replace("/", "-"), "{:02d}".format(episode.season))})
+        return_dict.append({'name': episode.name, 'id': episode.id, 'description': episode.description, 'filename': filename,
+                            'dir': "{}/{} Staffel {}".format(
+                                show.show.name.replace("/", "-"),
+                                show.show.name.replace("/", "-"), "{:02d}".format(episode.season)
+                            )})
     return return_dict
+
+
+def get_episode_video_link(episode_id):
+    try:
+        req = get(PLAYER_URL + episode_id, headers={
+            "Authorization": "Bearer " + token,
+            "User-Agent": USER_AGENT
+        })
+    except Exception as exception:
+        logger.error("Connection for video id {0} failed: {1}".format(episode_id, str(exception)))
+        False
+
+    if req.status_code == 429:
+        logger.error("HTTP error code {0} for video id {1}: This means RATE LIMITER, you are getting to many Items per second.".format(req.status_code, episode_id))
+        logger.error("Exiting")
+        #time.sleep(60)
+        sys.exit(1)
+    elif req.status_code != 200:
+        logger.error("HTTP error code {0} for video id {1}".format(req.status_code, episode_id))
+        False
+
+    data = req.json()
+    return data["data"]["attributes"]["streaming"]["hls"]["url"]
 
 
 def get_token():
@@ -329,11 +342,19 @@ if __name__ == "__main__":
         if xlsx:
             write_to_xls(show, episodes)
         elif out_links:
+            logger.warning(
+                "Due to rate limiting request from dmax, I will wait 5 seconds between each request, this can take some time!")
             for episode in episodes:
-                print(episode['video_link'])
+                print(get_episode_video_link(episode['id']))
+                # Sleep to prevent dmax api rate limiter
+                time.sleep(5)
         elif out_commands:
+            logger.warning(
+                "Due to rate limiting request from dmax, I will wait 5 seconds between each request, this can take some time!")
             for episode in episodes:
-                print("youtube-dl \"{0}\" -o \"{1}.mp4\"".format(episode['video_link'], episode['filename']))
+                print(f"youtube-dl \"{get_episode_video_link(episode['id'])}\" -o \"{episode['filename']}.mp4\"")
+                # Sleep to prevent dmax api rate limiter
+                time.sleep(5)
         else:
             if not os.path.isfile(ALREADY_DOWNLOADED_FILE):
                 open(ALREADY_DOWNLOADED_FILE, 'a').close()
@@ -349,7 +370,7 @@ if __name__ == "__main__":
                     ydl_opts = {'quiet': True, 'outtmpl': "downloads/{}/{}".format(j.get("dir"), j.get("filename").replace("%", "PERCENT"))}
                     rename = True
                     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([j.get("video_link")])
+                        ydl.download([get_episode_video_link(j['id'])])
 
                     if rename:
                         shutil.move("downloads/{}/{}.mp4".format(j.get("dir"), j.get("filename").replace("%", "PERCENT")),
