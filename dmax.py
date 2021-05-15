@@ -98,8 +98,10 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
     data = get_videos_api_request(showid, token, 1)
     if not data:
         logger.error("Can't fetch data on page 1 on show {}".format(showid))
-
-    if data["meta"]["totalPages"] > 1:
+    
+    if 'meta' not in data:
+        logger.warning(f'No total pages given, something wrong with series: {showid}')
+    elif data["meta"]["totalPages"] > 1:
         logger.info("More than 100 videos, need to get more pages")
         for i in range(1, data["meta"]["totalPages"]):
             more_data = get_videos_api_request(showid, token, i+1)
@@ -158,13 +160,21 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
                 episode_name=episode.name.strip()
             )
 
-        filename = filename.replace("/", "-")
+        filename = filename.replace("/", " ")
 
-        return_dict.append({'name': episode.name, 'id': episode.id, 'description': episode.description, 'filename': filename,
+        try:
+            return_dict.append({'name': episode.name, 'id': episode.id, 'description': episode.description, 'filename': filename,
                             'dir': "{}/{} Staffel {}".format(
                                 show.show.name.replace("/", "-"),
                                 show.show.name.replace("/", "-"), "{:02d}".format(episode.season)
                             )})
+        except AttributeError:
+            # Fix for: 'Episode' object has no attribute 'description'
+            return_dict.append({'name': episode.name, 'id': episode.id, 'description': '', 'filename': filename,
+                            'dir': "{}/{} Staffel {}".format(
+                                show.show.name.replace("/", "-"),
+                                show.show.name.replace("/", "-"), "{:02d}".format(episode.season)
+                            )}) 
     return return_dict
 
 
