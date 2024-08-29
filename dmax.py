@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import logging
 import os
 import sys
@@ -8,7 +9,7 @@ import youtube_dl
 import xlsxwriter
 import shutil
 import re
-from requests import get
+from requests import get, post, options
 
 import formats
 
@@ -30,7 +31,8 @@ SHOW_INFO_URL = API_BASE + "/content/videos//?include=primaryChannel,primaryChan
                            "genres,tags,images,contentPackages&sort=-seasonNumber,-episodeNumber" \
                            "&filter[show.alternateId]={0}&filter[videoType]=EPISODE&page[number]={1}&page[size]=100"
 API_URL_ALL_SHOWS = API_BASE + "/content/shows?page[number]={0}&page[size]=100"
-PLAYER_URL = "https://sonic-eu1-prod.disco-api.com/playback/videoPlaybackInfo/"
+#PLAYER_URL = "https://sonic-eu1-prod.disco-api.com/playback/videoPlaybackInfo/"
+PLAYER_URL = "https://eu1-prod.disco-api.com/playback/v3/videoPlaybackInfo"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:68.0) Gecko/20100101 Firefox/68.0"
 MAX_DOWNLOAD = 50000
 ALREADY_DOWNLOADED_FILE = "downloaded.txt"
@@ -180,10 +182,20 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
 
 def get_episode_video_link(episode_id, filename):
     try:
-        req = get(PLAYER_URL + episode_id, headers={
+        req = post(PLAYER_URL, headers={
             "Authorization": "Bearer " + token,
-            "User-Agent": USER_AGENT
-        })
+            "User-Agent": USER_AGENT,
+            "X-Device-Info": "STONEJS/1 (Unknown/Unknown; Unknown/Unknown; Unknown)",
+            "X-disco-client": "Alps:HyogaPlayer:0.0.0",
+            "X-disco-params": "realm=dmaxde"
+        }, data=json.dumps(
+            {
+                "deviceInfo": {"adBlocker": False, "drmSupported": True, "hdrCapabilities": ["SDR"],
+                               "hwDecodingCapabilities": [], "soundCapabilities": ["STEREO"]},
+                "wisteriaProperties": {},
+                "videoId": episode_id
+            }
+        ))
     except Exception as exception:
         logger.error("Connection for video id {0} ({1}) failed: {2}".format(episode_id, filename, str(exception)))
         return False
@@ -193,12 +205,14 @@ def get_episode_video_link(episode_id, filename):
         logger.error("Exiting")
         #time.sleep(60)
         sys.exit(1)
+    elif req.status_code == 403:
+        logger.error(f'Error 403: {req.json()}')
+        sys.exit(1)
     elif req.status_code != 200:
         logger.error("HTTP error code {0} for video id {1} ({2})".format(req.status_code, episode_id, filename))
         return False
 
-    data = req.json()
-    return data["data"]["attributes"]["streaming"]["hls"]["url"]
+    return req.json()['data']['attributes']['streaming'][0]['url']
 
 
 def get_token():
@@ -292,6 +306,13 @@ if __name__ == "__main__":
         help="Episode of season to get (default: 0 = all) - season MUST be set!"
     )
     parser.add_argument(
+        "-t",
+        metavar="Token",
+        type=str,
+        dest="token_override",
+        help="Override bearer token (Take it from developer console in your browser), currently the get_token function does not work properly"
+    )
+    parser.add_argument(
         '--xls',
         action='store_true',
         default=False,
@@ -325,7 +346,10 @@ if __name__ == "__main__":
     out_commands = arguments.commands
     downloaded_count = 0
 
-    token = get_token()
+    if arguments.token_override:
+        token = arguments.token_override
+    else:
+        token = get_token()
     if not token:
         sys.exit(1)
 
