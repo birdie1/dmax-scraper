@@ -422,4 +422,3 @@ if __name__ == "__main__":
                         logger.warning("Downloading file failed: {}".format(j.get("filename")))
 
                 downloaded_count += 1
-        break
