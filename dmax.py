@@ -26,13 +26,14 @@ formatter = logging.Formatter('[%(levelname)-7s] (%(asctime)s) %(filename)s::%(l
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-API_BASE = "https://eu1-prod.disco-api.com"
-SHOW_INFO_URL = API_BASE + "/content/videos//?include=primaryChannel,primaryChannel.images,show,show.images," \
-                           "genres,tags,images,contentPackages&sort=-seasonNumber,-episodeNumber" \
-                           "&filter[show.alternateId]={0}&filter[videoType]=EPISODE&page[number]={1}&page[size]=100"
-API_URL_ALL_SHOWS = API_BASE + "/content/shows?page[number]={0}&page[size]=100"
+API_BASE = "https://public.aurora.enhanced.live"
+SHOW_INFO_URL = API_BASE + "/site/page/{0}/?include=default&filter[environment]=dmaxde&v=2&parent_slug=sendungen"
+# SHOW_INFO_URL = API_BASE + "/content/videos//?include=primaryChannel,primaryChannel.images,show,show.images," \
+#                            "genres,tags,images,contentPackages&sort=-seasonNumber,-episodeNumber" \
+#                            "&filter[show.alternateId]={0}&filter[videoType]=EPISODE&page[number]={1}&page[size]=100"
+API_URL_ALL_SHOWS = API_BASE + "/site/page/sendungen/?include=default&filter[environment]=dmaxde&v=2"
 #PLAYER_URL = "https://sonic-eu1-prod.disco-api.com/playback/videoPlaybackInfo/"
-PLAYER_URL = "https://eu1-prod.disco-api.com/playback/v3/videoPlaybackInfo"
+PLAYER_URL = "https://public.aurora.enhanced.live/playback/v3/videoPlaybackInfo"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:68.0) Gecko/20100101 Firefox/68.0"
 MAX_DOWNLOAD = 50000
 ALREADY_DOWNLOADED_FILE = "downloaded.txt"
@@ -76,9 +77,9 @@ class WorkbookWriter:
         self.workbook.close()
 
 
-def get_videos_api_request(showid, token, page):
+def get_videos_api_request(showid):
     try:
-        req = get(SHOW_INFO_URL.format(showid, page), headers={"Authorization": "Bearer " + token})
+        req = get(SHOW_INFO_URL.format(showid))
     except Exception as e:
         logger.critical("Connection error: {0}".format(str(e)))
         return False
@@ -95,27 +96,25 @@ def get_videos_api_request(showid, token, page):
     return data
 
 
-def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
+def get_episodes(showid, chosen_season=0, chosen_episode=0):
     episodes = []
-    data = get_videos_api_request(showid, token, 1)
+    #print(SHOW_INFO_URL.format(showid))
+    data = get_videos_api_request(showid)
     if not data:
         logger.error("Can't fetch data on page 1 on show {}".format(showid))
-    
-    if 'meta' not in data:
-        logger.warning(f'No total pages given, something wrong with series: {showid}')
-    elif data["meta"]["totalPages"] > 1:
-        logger.info("More than 100 videos, need to get more pages")
-        for i in range(1, data["meta"]["totalPages"]):
-            more_data = get_videos_api_request(showid, token, i+1)
-            if not more_data:
-                logger.error("Can't fetch data on page {} on show {}".format(i+1, showid))
-            else:
-                data["data"].extend(more_data["data"])
 
-    if len(data["data"]) == 0:
-        logger.warning("No episodes found in {}".format(showid))
-        return episodes
+    # showid = data.get('attributes').get('showId')
+    # #print(len(data.get('blocks')))
+    # for i in data.get('blocks'):
+    #     if i.get('showId') == showid and 'items' in i:
+    #         for j in i.get('items'):
+    #             print(f"S{j['seasonNumber']}E{j['episodeNumber']} - {j['title']}")
+
+    # if len(data["data"]) == 0:
+    #     logger.warning("No episodes found in {}".format(showid))
+    #     return episodes
     show = formats.DMAX(data)
+    token = data.get('userMeta').get('realm').get('X-REALM-DE')
 
     if chosen_season == 0 and chosen_episode == 0:  # Get EVERYTHING
         episodes = show.episodes
@@ -177,25 +176,31 @@ def get_episodes(showid, token, chosen_season=0, chosen_episode=0):
                                 show.show.name.replace("/", "-"),
                                 show.show.name.replace("/", "-"), "{:02d}".format(episode.season)
                             )}) 
-    return return_dict
+    return return_dict, token
 
 
-def get_episode_video_link(episode_id, filename):
+def get_episode_video_link(episode_id, filename, token):
+    print(token)
+    print(episode_id)
     try:
         req = post(PLAYER_URL, headers={
-            "Authorization": "Bearer " + token,
-            "User-Agent": USER_AGENT,
-            "X-Device-Info": "STONEJS/1 (Unknown/Unknown; Unknown/Unknown; Unknown)",
-            "X-disco-client": "Alps:HyogaPlayer:0.0.0",
-            "X-disco-params": "realm=dmaxde"
-        }, data=json.dumps(
-            {
-                "deviceInfo": {"adBlocker": False, "drmSupported": True, "hdrCapabilities": ["SDR"],
-                               "hwDecodingCapabilities": [], "soundCapabilities": ["STEREO"]},
+            "Authorization": f"Bearer {token}",
+        }, json= {
+                "deviceInfo": {
+                    "adBlocker": False,
+                    "drmSupported": True,
+                    "hdrCapabilities": [
+                        "SDR"
+                    ],
+                    "hwDecodingCapabilities": [],
+                    "soundCapabilities": [
+                        "STEREO"
+                    ]
+                },
                 "wisteriaProperties": {},
                 "videoId": episode_id
             }
-        ))
+        )
     except Exception as exception:
         logger.error("Connection for video id {0} ({1}) failed: {2}".format(episode_id, filename, str(exception)))
         return False
@@ -209,7 +214,7 @@ def get_episode_video_link(episode_id, filename):
         logger.error(f'Error 403: {req.json()}')
         sys.exit(1)
     elif req.status_code != 200:
-        logger.error("HTTP error code {0} for video id {1} ({2})".format(req.status_code, episode_id, filename))
+        logger.error("HTTP error code %s for video id %s (%s), content: %s",req.status_code, episode_id, filename, req.text)
         return False
 
     return req.json()['data']['attributes']['streaming'][0]['url']
@@ -225,20 +230,16 @@ def get_token():
     return token
 
 
-def request_dmax_api_all_shows(token):
+def request_dmax_api_all_shows():
     count = 0
     return_list = []
 
-    while True:
-        count += 1
-        response = get(API_URL_ALL_SHOWS.format(count), headers={"Authorization": "Bearer " + token})
-        data = response.json()
-        if len(data["data"]) == 0:
-            break
-        for i in data["data"]:
-            return_list.append(i["attributes"]["alternateId"])
+    response = get(API_URL_ALL_SHOWS)
+    data = response.json()
+    for series in data.get("blocks")[0].get('items'):
+        return_list.append(series.get('slug'))
 
-    logger.info("Found {} shows on {} pages with 100 entries".format(len(return_list), count-1))
+    logger.info("Found %s shows", len(return_list))
     return return_list
 
 
@@ -346,16 +347,16 @@ if __name__ == "__main__":
     out_commands = arguments.commands
     downloaded_count = 0
 
-    if arguments.token_override:
-        token = arguments.token_override
-    else:
-        token = get_token()
-    if not token:
-        sys.exit(1)
+    # if arguments.token_override:
+    #     token = arguments.token_override
+    # else:
+    #     token = get_token()
+    # if not token:
+    #     sys.exit(1)
 
     if showid is None:
-        alternate_id_list = request_dmax_api_all_shows(token)
-        logger.info("Found following shows (Count: {}): {}".format(len(alternate_id_list), alternate_id_list))
+        uri_slug_list = request_dmax_api_all_shows()
+        #logger.info("Found following shows (Count: {}): {}".format(len(alternate_id_list), alternate_id_list))
     else:
         if chosen_episode < 0 or chosen_season < 0:
             print("ERROR: Episode/Season must be > 0.")
@@ -363,11 +364,11 @@ if __name__ == "__main__":
         if chosen_episode > 0 and chosen_season == 0:
             print("ERROR: Season must be set.")
 
-        alternate_id_list = [showid]
+        uri_slug_list = [showid]
 
-    for show in alternate_id_list:
-        logger.info("Processing Show: {}".format(show))
-        episodes = get_episodes(show, token, chosen_season=chosen_season, chosen_episode=chosen_episode)
+    for show in uri_slug_list:
+        logger.info("Processing Show: %s ")
+        episodes, token = get_episodes(show, chosen_season=chosen_season, chosen_episode=chosen_episode)
 
         if episodes is None:
             logger.warning("No Episodes in {}".format(show))
@@ -379,14 +380,14 @@ if __name__ == "__main__":
             logger.warning(
                 "Due to rate limiting request from dmax, I will wait 5 seconds between each request, this can take some time!")
             for episode in episodes:
-                print(get_episode_video_link(episode['id'], episode.get("filename")))
+                print(get_episode_video_link(episode['id'], episode.get("filename"), token))
                 # Sleep to prevent dmax api rate limiter
                 time.sleep(5)
         elif out_commands:
             logger.warning(
                 "Due to rate limiting request from dmax, I will wait 5 seconds between each request, this can take some time!")
             for episode in episodes:
-                print(f"youtube-dl \"{get_episode_video_link(episode['id'], episode.get('filename'))}\" -o \"{episode['filename']}.mp4\"")
+                print(f"youtube-dl \"{get_episode_video_link(episode['id'], episode.get('filename'), token)}\" -o \"{episode['filename']}.mp4\"")
                 # Sleep to prevent dmax api rate limiter
                 time.sleep(5)
         else:
@@ -400,10 +401,10 @@ if __name__ == "__main__":
 
                 rename = False
                 if not already_downloaded(j.get("filename")):
-                    ydl_opts = {'quiet': True, 'outtmpl': "downloads/{}/{}".format(j.get("dir"), j.get("filename").replace("%", "PERCENT"))}
+                    ydl_opts = {'concurrent_fragment_downloads': 5, 'quiet': True, 'outtmpl': "downloads/{}/{}".format(j.get("dir"), j.get("filename").replace("%", "PERCENT"))}
                     if j.get("filename").find("%") != -1:
                         rename = True
-                    link = get_episode_video_link(j['id'], j.get("filename"))
+                    link = get_episode_video_link(j['id'], j.get("filename"), token)
                     if not link:
                         continue
                     logger.info("Downloading file: {}".format(j.get("filename")))
@@ -421,3 +422,4 @@ if __name__ == "__main__":
                         logger.warning("Downloading file failed: {}".format(j.get("filename")))
 
                 downloaded_count += 1
+        break

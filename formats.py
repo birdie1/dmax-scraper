@@ -11,11 +11,12 @@ class Show:
         :param json: String. Raw JSON
         """
 
-        self.alternateId = json["alternateId"]
-        self.name = json["name"]
+        self.showId = json["attributes"]['showId']
+        self.slug = json["slug"]
+        self.name = json["title"]
 
         if "description" in json:
-            self.description = json["description"]
+            self.description = json["metaDescription"]
 
         if "episodeCount" in json:
             self.episodeCount = json["episodeCount"]
@@ -37,14 +38,13 @@ class Episode:
         """
 
         self.id = json["id"]
-        json = json["attributes"]
         self.alternateId = json["alternateId"]
 
         if "airDate" in json:
             self.airDate = datetime.strptime(json["airDate"], '%Y-%m-%dT%H:%M:%SZ')
 
-        if "name" in json:
-            self.name = json["name"]
+        if "title" in json:
+            self.name = json["title"]
 
         if "description" in json:
             self.description = json["description"]
@@ -64,10 +64,10 @@ class Episode:
             self.season = None
 
         if "publishStart" in json:
-            self.publishStart = datetime.strptime(json["publishStart"], '%Y-%m-%dT%H:%M:%SZ')
+            self.publishStart = datetime.strptime(json["publishStart"], '%Y-%m-%dT%H:%M:%S%z')
 
         if "publishEnd" in json:
-            self.publishEnd = datetime.strptime(json["publishEnd"], '%Y-%m-%dT%H:%M:%SZ')
+            self.publishEnd = datetime.strptime(json["publishEnd"], '%Y-%m-%dT%H:%M:%S%z')
 
         if "videoDuration" in json:
             self.videoDuration = timedelta(milliseconds=json["videoDuration"])
@@ -94,18 +94,19 @@ class DMAX:
         :param json: String. Raw JSON
         """
 
-        if "data" not in json or "included" not in json:
-            raise Exception("Invalid JSON.")
+        # if "data" not in json or "included" not in json:
+        #     raise Exception("Invalid JSON.")
 
         self.show = None
-        for incl in json["included"]:
-            if "type" in incl and incl["type"] == "show":
-                self.show = Show(incl["attributes"])
-                break
+        if json["type"] == "showpage":
+            self.show = Show(json)
 
         if not self.show:
             raise Exception("No show data found.")
 
         self.episodes = []
-        for episode in json["data"]:
-            self.episodes.append(Episode(episode))
+        for i in json.get('blocks'):
+            if i.get('showId') == self.show.showId and 'items' in i:
+                for j in i.get('items'):
+                    #print(f"S{j['seasonNumber']}E{j['episodeNumber']} - {j['title']}")
+                    self.episodes.append(Episode(j))
