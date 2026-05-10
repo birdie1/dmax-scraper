@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 import time
-import youtube_dl
+import yt_dlp
 import xlsxwriter
 import shutil
 import re
@@ -408,7 +408,7 @@ if __name__ == "__main__":
                     if not link:
                         continue
                     logger.info("Downloading file: {}".format(j.get("filename")))
-                    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([link])
 
                     if rename:
