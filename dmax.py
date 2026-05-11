@@ -180,8 +180,6 @@ def get_episodes(showid, chosen_season=0, chosen_episode=0):
 
 
 def get_episode_video_link(episode_id, filename, token):
-    print(token)
-    print(episode_id)
     try:
         req = post(PLAYER_URL, headers={
             "Authorization": f"Bearer {token}",
