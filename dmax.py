@@ -124,18 +124,18 @@ def get_episodes(showid, chosen_season=0, chosen_episode=0):
                 episodes.append(episode)
         if not episodes:
             logger.error("This season does not exist.")
-            return
+            return None, None
     else:  # Get single episode
         for episode in show.episodes:
             if episode.seasonNumber == chosen_season and episode.episodeNumber == chosen_episode:
                 episodes.append(episode)
         if not episodes:
             logger.error("Episode not found.")
-            return
+            return None, None
 
     if not episodes:
         logger.info("No Episodes to download.")
-        return
+        return None, None
 
     return_dict = []
     logger.info("Found {} episodes, getting video links...".format(len(episodes)))
@@ -367,11 +367,11 @@ if __name__ == "__main__":
         uri_slug_list = [showid]
 
     for show in uri_slug_list:
-        logger.info("Processing Show: %s ")
+        logger.info("Processing Show: %s", show)
         episodes, token = get_episodes(show, chosen_season=chosen_season, chosen_episode=chosen_episode)
 
         if episodes is None:
-            logger.warning("No Episodes in {}".format(show))
+            logger.warning("No Episodes in %s", show)
             continue
 
         if xlsx:
